@@ -46,3 +46,39 @@ models:
     generate_kwargs:
       temperature: 0.7
       max_tokens: 2000
+
+# 嵌入模型配置（用于长期记忆功能）
+embedding_models:
+  # DashScope (阿里云通义千问) 嵌入模型
+  - model_name: text-embedding-v2
+    model_type: dashscope
+    api_key: ${DASHSCOPE_API_KEY}
+
+  - model_name: text-embedding-v3
+    model_type: dashscope
+    api_key: ${DASHSCOPE_API_KEY}
+
+  # OpenAI 嵌入模型
+  - model_name: text-embedding-3-small
+    model_type: openai
+    api_key: ${OPENAI_API_KEY}
+    dimensions: 1536
+
+  - model_name: text-embedding-3-large
+    model_type: openai
+    api_key: ${OPENAI_API_KEY}
+    dimensions: 3072
+
+  # Gemini 嵌入模型
+  - model_name: text-embedding-004
+    model_type: gemini
+    api_key: ${GEMINI_API_KEY}
+
+  # Ollama 本地嵌入模型
+  - model_name: nomic-embed-text
+    model_type: ollama
+    base_url: http://localhost:11434
+
+  - model_name: mxbai-embed-large
+    model_type: ollama
+    base_url: http://localhost:11434

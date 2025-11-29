@@ -32,6 +32,26 @@ class ModelConfig(BaseModel):
         return v
 
 
+class EmbeddingModelConfig(BaseModel):
+    """嵌入模型配置"""
+
+    model_name: str = Field(..., description="嵌入模型名称")
+    model_type: str = Field(..., description="嵌入模型类型，如dashscope, openai, gemini, ollama")
+    api_key: Optional[str] = Field(None, description="API密钥")
+    base_url: Optional[str] = Field(None, description="API基础URL")
+    dimensions: Optional[int] = Field(None, description="向量维度")
+    generate_kwargs: Optional[Dict[str, Any]] = Field(default_factory=dict, description="生成参数")
+
+    @field_validator("api_key", mode="before")
+    @classmethod
+    def resolve_env_var(cls, v: Optional[str]) -> Optional[str]:
+        """解析环境变量"""
+        if v and v.startswith("${") and v.endswith("}"):
+            env_var = v[2:-1]
+            return os.getenv(env_var)
+        return v
+
+
 class AgentConfig(BaseModel):
     """Agent配置"""
 
@@ -41,6 +61,10 @@ class AgentConfig(BaseModel):
     sys_prompt: Optional[str] = Field(None, description="系统提示词，如果为None则使用模板")
     memory_config: Optional[Dict[str, Any]] = Field(default_factory=dict, description="记忆配置")
     parallel_tool_calls: bool = Field(False, description="是否支持并行工具调用")
+    long_term_memory: Optional[Dict[str, Any]] = Field(
+        None,
+        description="长期记忆配置，包含enabled, mode, user_name, embedding_model, storage_path等",
+    )
 
 
 class GlobalConfig(BaseModel):
@@ -65,6 +89,9 @@ class Config(BaseModel):
     agents: List[AgentConfig] = Field(..., description="Agent配置列表")
     global_config: GlobalConfig = Field(default_factory=GlobalConfig, description="全局配置")
     server: ServerConfig = Field(default_factory=ServerConfig, description="服务器配置")
+    embedding_models: List[EmbeddingModelConfig] = Field(
+        default_factory=list, description="嵌入模型配置列表"
+    )
 
 
 def load_yaml(file_path: str) -> Dict[str, Any]:
@@ -119,6 +146,7 @@ def load_config(config_dir: str = "config") -> Config:
         "agents": agents_data.get("agents", []),
         "global_config": global_data.get("global", {}),
         "server": global_data.get("server", {}),
+        "embedding_models": models_data.get("embedding_models", []),
     }
 
     # 验证并返回配置
@@ -154,4 +182,20 @@ def get_agent_config(config: Config, agent_name: str) -> Optional[AgentConfig]:
     for agent in config.agents:
         if agent.name == agent_name:
             return agent
+    return None
+
+
+def get_embedding_model_config(config: Config, model_name: str) -> Optional[EmbeddingModelConfig]:
+    """根据名称获取嵌入模型配置
+
+    Args:
+        config: 配置对象
+        model_name: 嵌入模型名称
+
+    Returns:
+        嵌入模型配置，如果不存在则返回None
+    """
+    for model in config.embedding_models:
+        if model.model_name == model_name:
+            return model
     return None

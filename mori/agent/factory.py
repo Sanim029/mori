@@ -18,6 +18,8 @@ def create_mori_agent(
     formatter,
     toolkit: Optional[Toolkit] = None,
     parallel_tool_calls: bool = False,
+    long_term_memory=None,
+    long_term_memory_mode: Optional[str] = None,
     **kwargs,
 ) -> ReActAgent:
     """创建Mori Agent实例
@@ -32,6 +34,8 @@ def create_mori_agent(
         formatter: 提示词格式化器
         toolkit: 工具集，如果为None则创建空工具集
         parallel_tool_calls: 是否支持并行工具调用
+        long_term_memory: 长期记忆实例（可选）
+        long_term_memory_mode: 长期记忆模式，可选值: agent_control, static_control, both
         **kwargs: 其他传递给ReActAgent的参数
 
     Returns:
@@ -52,6 +56,8 @@ def create_mori_agent(
         memory=memory,
         toolkit=toolkit,
         parallel_tool_calls=parallel_tool_calls,
+        long_term_memory=long_term_memory,
+        long_term_memory_mode=long_term_memory_mode,
         **kwargs,
     )
 

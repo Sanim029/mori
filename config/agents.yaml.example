@@ -11,3 +11,12 @@ agents:
       type: memory
       max_length: 100
     parallel_tool_calls: true  # 是否支持并行工具调用
+
+    # 长期记忆配置（可选）
+    long_term_memory:
+      enabled: true  # 是否启用长期记忆
+      mode: "agent_control"  # 记忆管理模式: agent_control, static_control, both
+      user_name: "user"  # 用户标识，用于区分不同用户的记忆
+      embedding_model: "text-embedding-v2"  # 引用 models.yaml 中的嵌入模型名称
+      storage_path: "data/memory"  # 持久化存储路径
+      on_disk: true  # 是否持久化存储（true=持久化，false=内存存储）
