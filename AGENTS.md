@@ -42,10 +42,12 @@ This file provides guidance to agents when working with code in this repository.
 - 用户隔离：通过 `user_name` 区分不同用户的记忆数据
 
 ### 嵌入模型创建
-- 在 [`mori.py:_create_embedding_model()`](mori/mori.py:183) 中实现
+- 在 [`mori/model/factory.py:create_embedding_model()`](mori/model/factory.py:91) 中实现
 - 根据 `model_type` 创建对应的嵌入模型实例
 - 必须显式设置 `dimensions` 参数，Mem0 从此推断向量维度
-- OpenAI 嵌入模型直接接受 `base_url` 参数，Ollama 需要通过 `client_args` 传递
+- `base_url` 传递方式：
+  - OpenAI 嵌入模型：直接传递 `base_url` 参数（内部直接传给 `openai.AsyncClient`）
+  - Ollama 嵌入模型：通过 `client_args` 传递 `base_url`
 
 ### 长期记忆实例化
 - 在 [`mori.py:_create_long_term_memory()`](mori/mori.py:260) 中实现

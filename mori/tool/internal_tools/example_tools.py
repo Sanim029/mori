@@ -7,7 +7,7 @@
 from datetime import datetime
 
 from agentscope.message import TextBlock
-from agentscope.tool import ToolResponse, Toolkit
+from agentscope.tool import Toolkit, ToolResponse
 
 
 async def get_current_time() -> ToolResponse:

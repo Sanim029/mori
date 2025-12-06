@@ -3,11 +3,17 @@
 使用Gradio创建Web界面，提供友好的用户交互体验。
 """
 
-from typing import List, Dict
+import traceback
+from typing import Dict, List, Tuple
 
 import gradio as gr
 
+from logger.config import get_logger
 from mori import Mori
+from mori.exceptions import ConfigError, MoriError
+
+# 使用统一的 "mori" logger，避免日志传播导致的重复打印
+logger = get_logger("mori")
 
 
 class MoriGUI:
@@ -18,13 +24,27 @@ class MoriGUI:
 
         Args:
             config_dir: 配置文件目录
+
+        Raises:
+            ConfigError: 配置加载失败
+            MoriError: Mori 初始化失败
         """
-        self.mori = Mori(config_dir)
-        self.config = self.mori.config
+        try:
+            logger.info(f"初始化 Mori GUI，配置目录: {config_dir}")
+            self.mori = Mori(config_dir)
+            self.config = self.mori.config
+            logger.info("Mori GUI 初始化成功")
+        except ConfigError as e:
+            logger.error(f"配置加载失败: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"Mori 初始化失败: {e}")
+            logger.debug(traceback.format_exc())
+            raise MoriError("GUI 初始化失败", str(e))
 
     async def chat(
         self, message: str, history: List[Dict[str, str]]
-    ) -> tuple[str, List[Dict[str, str]]]:
+    ) -> Tuple[str, List[Dict[str, str]]]:
         """处理聊天消息
 
         Args:
@@ -35,16 +55,47 @@ class MoriGUI:
             (空字符串, 更新后的历史)
         """
         if not message.strip():
+            logger.debug("收到空消息，忽略")
             return "", history
 
-        # 获取回复
-        response = await self.mori.chat(message)
+        try:
+            logger.info(f"处理用户消息: {message[:50]}...")
 
-        # 更新历史 - Gradio 6.0格式
-        history.append({"role": "user", "content": message})
-        history.append({"role": "assistant", "content": response})
+            # 获取回复
+            response = await self.mori.chat(message)
 
-        return "", history
+            logger.info(f"生成回复: {response[:50]}...")
+
+            # 更新历史 - Gradio 6.0格式
+            history.append({"role": "user", "content": message})
+            history.append({"role": "assistant", "content": response})
+
+            return "", history
+
+        except MoriError as e:
+            # Mori 业务错误，记录并返回友好提示
+            logger.error(f"处理消息时发生业务错误: {e}")
+            error_message = f"抱歉，处理您的消息时遇到了问题：{e.message}"
+
+            if e.details:
+                logger.debug(f"错误详情: {e.details}")
+
+            history.append({"role": "user", "content": message})
+            history.append({"role": "assistant", "content": error_message})
+
+            return "", history
+
+        except Exception as e:
+            # 未预期的错误，记录完整堆栈并返回通用错误消息
+            logger.error(f"处理消息时发生未知错误: {e}")
+            logger.debug(traceback.format_exc())
+
+            error_message = "抱歉，处理您的消息时发生了意外错误，请稍后重试。"
+
+            history.append({"role": "user", "content": message})
+            history.append({"role": "assistant", "content": error_message})
+
+            return "", history
 
     async def reset(self) -> List[Dict[str, str]]:
         """重置对话
@@ -52,10 +103,16 @@ class MoriGUI:
         Returns:
             空的对话历史
         """
-        print("DEBUG: reset() 被调用")  # 调试日志
-        await self.mori.reset()
-        print("DEBUG: mori.reset() 执行完成")  # 调试日志
-        return []
+        try:
+            logger.info("重置对话")
+            await self.mori.reset()
+            logger.info("对话重置成功")
+            return []
+        except Exception as e:
+            logger.error(f"重置对话失败: {e}")
+            logger.debug(traceback.format_exc())
+            # 即使重置失败，也返回空列表以清空 UI
+            return []
 
     def create_interface(self) -> gr.Blocks:
         """创建Gradio界面
@@ -109,11 +166,17 @@ class MoriGUI:
                         """
                     )
 
+                    # 获取主agent配置信息
+                    primary_agent_name = self.mori.get_primary_agent_name()
+                    primary_agent_config = self.config.agents.get(primary_agent_name)
+                    primary_agent = self.mori.primary_agent
+
                     gr.Markdown(
                         f"""
-                        - **Agent**: {self.mori.agent_config.name}
-                        - **模型**: {self.mori.agent_config.model}
-                        - **工具**: {len(self.mori.toolkit.get_json_schemas())} 个
+                        - **主Agent**: {primary_agent_name}
+                        - **模型**: {primary_agent_config.model if primary_agent_config else 'N/A'}
+                        - **工具**: {len(primary_agent.toolkit.get_json_schemas())} 个
+                        - **可用Agents**: {len(self.mori.list_agents())} 个
                         """
                     )
 
@@ -161,15 +224,41 @@ class MoriGUI:
 
 def main():
     """主函数"""
-    # 创建GUI实例
-    gui = MoriGUI()
+    try:
+        # 创建GUI实例
+        logger.info("启动 Mori GUI 应用")
+        gui = MoriGUI()
 
-    # 使用配置文件中的服务器设置
-    gui.launch(
-        server_name=gui.config.server.host,
-        server_port=gui.config.server.port,
-        share=gui.config.server.share,
-    )
+        # 使用配置文件中的服务器设置
+        logger.info(f"启动服务器: {gui.config.server.host}:{gui.config.server.port}")
+        gui.launch(
+            server_name=gui.config.server.host,
+            server_port=gui.config.server.port,
+            share=gui.config.server.share,
+        )
+    except ConfigError as e:
+        logger.critical(f"配置错误，无法启动应用: {e}")
+        if e.details:
+            logger.critical(f"详情: {e.details}")
+        print(f"\n❌ 配置错误: {e}")
+        if e.details:
+            print(f"详情: {e.details}")
+        print("\n请检查配置文件后重试。")
+        return
+    except MoriError as e:
+        logger.critical(f"启动失败: {e}")
+        if e.details:
+            logger.critical(f"详情: {e.details}")
+        print(f"\n❌ 启动失败: {e.message}")
+        if e.details:
+            print(f"详情: {e.details}")
+        return
+    except Exception as e:
+        logger.critical(f"未知错误导致启动失败: {e}")
+        logger.critical(traceback.format_exc())
+        print(f"\n❌ 发生未知错误: {e}")
+        print("请查看日志获取详细信息。")
+        return
 
 
 if __name__ == "__main__":

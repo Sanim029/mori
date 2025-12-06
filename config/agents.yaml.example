@@ -1,10 +1,20 @@
-# Agent配置示例
+# Agent配置示例（多Agent架构）
 # 复制此文件为 agents.yaml
+#
+# 多Agent架构说明：
+# - primary_agent: 指定主agent，唯一与用户直接交互的agent
+# - agents: 字典格式，key为agent名称
+# - 子agent会自动注册为主agent的工具
+# - tools: 每个agent指定可用的普通工具列表
+# - 子agent不能调用其他agent（防止循环调用）
+
+# 指定主agent（必须）
+primary_agent: mori
 
 agents:
-  # Mori - 虚拟AI女友
-  - name: mori
-    model: gpt-4  # 引用 models.yaml 中的模型名称
+  # 主agent - 虚拟AI女友
+  mori:
+    model: main_gpt4  # 引用 models.yaml 中的配置名
     template: mori  # 模板名称，自动查找 internal_template/mori.jinja2
     sys_prompt: null  # 如果为null，则使用模板中的提示词
     memory_config:
@@ -12,11 +22,89 @@ agents:
       max_length: 100
     parallel_tool_calls: true  # 是否支持并行工具调用
 
+    # 主agent可用的普通工具列表
+    # 注意：不需要列出子agent，系统会自动注册所有子agent为工具
+    tools:
+      - get_weather      # 示例工具
+      - search_web       # 示例工具
+
     # 长期记忆配置（可选）
     long_term_memory:
       enabled: true  # 是否启用长期记忆
       mode: "agent_control"  # 记忆管理模式: agent_control, static_control, both
       user_name: "user"  # 用户标识，用于区分不同用户的记忆
-      embedding_model: "text-embedding-v2"  # 引用 models.yaml 中的嵌入模型名称
-      storage_path: "data/memory"  # 持久化存储路径
+      embedding_model: "dashscope_embedding"  # 引用 models.yaml 中的嵌入模型配置名
+      storage_path: "data/memory/mori"  # 持久化存储路径
       on_disk: true  # 是否持久化存储（true=持久化，false=内存存储）
+
+  # 子agent - 创意写作助手
+  writer:
+    model: main_gpt4  # 使用强模型
+    template: writer  # 需要创建对应的模板
+    sys_prompt: null
+    memory_config:
+      type: memory
+      max_length: 200
+    parallel_tool_calls: false
+
+    # 子agent只能使用配置中指定的工具
+    tools:
+      - search_web  # 可以搜索参考资料
+      # 注意：子agent不能调用其他agent
+
+    # 子agent可以选择不启用长期记忆
+    long_term_memory:
+      enabled: false
+
+  # 子agent - 代码助手
+  coder:
+    model: fast_gpt35  # 使用快速模型
+    template: coder  # 需要创建对应的模板
+    sys_prompt: null
+    memory_config:
+      type: memory
+      max_length: 50
+    parallel_tool_calls: true
+
+    tools:
+      - execute_code  # 执行代码（示例）
+      - read_file     # 读取文件（示例）
+      - write_file    # 写入文件（示例）
+
+    long_term_memory:
+      enabled: false
+
+  # 子agent - 数据分析助手
+  analyst:
+    model: qwen_max  # 使用通义千问
+    template: analyst  # 需要创建对应的模板
+    sys_prompt: null
+    memory_config:
+      type: memory
+      max_length: 100
+    parallel_tool_calls: true
+
+    tools:
+      - read_file      # 读取数据文件
+      - search_web     # 搜索参考信息
+
+    long_term_memory:
+      enabled: false
+
+# 使用说明：
+# 1. 主agent（mori）会自动获得所有子agent作为工具：
+#    - call_writer_agent: 调用创意写作助手
+#    - call_coder_agent: 调用代码助手
+#    - call_analyst_agent: 调用数据分析助手
+#
+# 2. 主agent根据用户请求自主决定：
+#    - 自己直接处理
+#    - 调用某个子agent处理
+#    - 调用多个子agent协作
+#
+# 3. 工作流程示例：
+#    用户: "帮我写一篇关于春天的诗"
+#    → 主agent识别这是创意任务
+#    → 调用 call_writer_agent("写一篇关于春天的诗")
+#    → writer子agent执行并返回结果
+#    → 主agent整合结果回复用户

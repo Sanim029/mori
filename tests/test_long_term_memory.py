@@ -4,7 +4,6 @@
 """
 
 import os
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -55,7 +54,6 @@ class TestAgentConfigWithLongTermMemory:
     def test_agent_config_with_ltm(self):
         """测试Agent配置包含长期记忆配置"""
         config = AgentConfig(
-            name="test_agent",
             model="gpt-4",
             template="mori",
             long_term_memory={
@@ -69,15 +67,14 @@ class TestAgentConfigWithLongTermMemory:
         )
 
         assert config.long_term_memory is not None
-        assert config.long_term_memory["enabled"] is True
-        assert config.long_term_memory["mode"] == "agent_control"
-        assert config.long_term_memory["user_name"] == "test_user"
-        assert config.long_term_memory["embedding_model"] == "text-embedding-v2"
+        assert config.long_term_memory.enabled is True
+        assert config.long_term_memory.mode == "agent_control"
+        assert config.long_term_memory.user_name == "test_user"
+        assert config.long_term_memory.embedding_model == "text-embedding-v2"
 
     def test_agent_config_without_ltm(self):
         """测试Agent配置不包含长期记忆配置"""
         config = AgentConfig(
-            name="test_agent",
             model="gpt-4",
             template="mori",
         )
@@ -91,49 +88,61 @@ class TestConfigWithEmbeddingModels:
     def test_config_with_embedding_models(self):
         """测试完整配置包含嵌入模型"""
         config = Config(
-            models=[
-                ModelConfig(
+            models={
+                "gpt-4": ModelConfig(
                     model_name="gpt-4",
                     model_type="openai",
                     api_key="test_key",
                 )
-            ],
-            agents=[
-                AgentConfig(
-                    name="test_agent",
+            },
+            agents={
+                "test_agent": AgentConfig(
                     model="gpt-4",
                     template="mori",
                 )
-            ],
-            embedding_models=[
-                EmbeddingModelConfig(
+            },
+            primary_agent="test_agent",
+            embedding_models={
+                "text-embedding-v2": EmbeddingModelConfig(
                     model_name="text-embedding-v2",
                     model_type="dashscope",
                     api_key="test_key",
                 )
-            ],
+            },
         )
 
         assert len(config.embedding_models) == 1
-        assert config.embedding_models[0].model_name == "text-embedding-v2"
+        assert config.embedding_models["text-embedding-v2"].model_name == "text-embedding-v2"
 
     def test_get_embedding_model_config(self):
         """测试获取嵌入模型配置"""
         config = Config(
-            models=[],
-            agents=[],
-            embedding_models=[
-                EmbeddingModelConfig(
+            models={
+                "gpt-4": ModelConfig(
+                    model_name="gpt-4",
+                    model_type="openai",
+                    api_key="test_key",
+                )
+            },
+            agents={
+                "test_agent": AgentConfig(
+                    model="gpt-4",
+                    template="mori",
+                )
+            },
+            primary_agent="test_agent",
+            embedding_models={
+                "text-embedding-v2": EmbeddingModelConfig(
                     model_name="text-embedding-v2",
                     model_type="dashscope",
                     api_key="test_key",
                 ),
-                EmbeddingModelConfig(
+                "text-embedding-3-small": EmbeddingModelConfig(
                     model_name="text-embedding-3-small",
                     model_type="openai",
                     api_key="test_key",
                 ),
-            ],
+            },
         )
 
         # 测试找到配置
@@ -150,52 +159,22 @@ class TestConfigWithEmbeddingModels:
 class TestMoriLongTermMemoryIntegration:
     """测试Mori类的长期记忆集成"""
 
-    @patch("mori.mori.DashScopeTextEmbedding")
-    @patch("mori.mori.Mem0LongTermMemory")
-    def test_create_embedding_model_dashscope(self, mock_ltm, mock_embedding):
-        """测试创建DashScope嵌入模型"""
+    def test_create_embedding_model_dashscope(self):
+        """测试创建DashScope嵌入模型配置"""
+        # 这个测试简化为只验证配置本身，不测试实际的模型创建
+        # 因为实际的模型创建需要复杂的mock和依赖
 
-        # 创建mock配置
-        with patch("mori.mori.load_config") as mock_load_config:
-            mock_config = MagicMock()
-            mock_config.models = [
-                ModelConfig(
-                    model_name="gpt-4",
-                    model_type="openai",
-                    api_key="test_key",
-                )
-            ]
-            mock_config.agents = [
-                AgentConfig(
-                    name="test_agent",
-                    model="gpt-4",
-                    template="mori",
-                    long_term_memory={
-                        "enabled": True,
-                        "mode": "agent_control",
-                        "user_name": "test_user",
-                        "embedding_model": "text-embedding-v2",
-                        "storage_path": "data/memory",
-                        "on_disk": True,
-                    },
-                )
-            ]
-            mock_config.embedding_models = [
-                EmbeddingModelConfig(
-                    model_name="text-embedding-v2",
-                    model_type="dashscope",
-                    api_key="test_key",
-                )
-            ]
-            mock_config.global_config = MagicMock()
-            mock_config.global_config.log_level = "INFO"
-            mock_config.global_config.log_dir = "logs"
+        embedding_config = EmbeddingModelConfig(
+            model_name="text-embedding-v2",
+            model_type="dashscope",
+            api_key="test_key",
+            dimensions=1536,
+        )
 
-            mock_load_config.return_value = mock_config
-
-            # 由于Mori初始化会创建很多对象，这里只测试配置加载
-            # 实际的嵌入模型创建测试需要更复杂的mock
-            assert mock_config.embedding_models[0].model_type == "dashscope"
+        assert embedding_config.model_name == "text-embedding-v2"
+        assert embedding_config.model_type == "dashscope"
+        assert embedding_config.api_key == "test_key"
+        assert embedding_config.dimensions == 1536
 
 
 class TestLongTermMemoryConfiguration:

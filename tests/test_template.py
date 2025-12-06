@@ -16,9 +16,12 @@ def test_resolve_template_path_short_name():
     """测试解析简短模板名称"""
     loader = TemplateLoader()
 
-    # 简短名称应该解析为 internal_template/mori.jinja2
+    # 简短名称应该添加 .jinja2 扩展名
+    # ChoiceLoader 会按优先级自动查找：
+    # 1. config/template/mori.jinja2 (自定义)
+    # 2. mori/template/internal_template/mori.jinja2 (内置)
     resolved = loader._resolve_template_path("mori")
-    assert resolved == "internal_template/mori.jinja2"
+    assert resolved == "mori.jinja2"
 
 
 def test_resolve_template_path_full_path():
@@ -113,11 +116,14 @@ def test_template_backwards_compatibility():
 
 def test_custom_template_directory():
     """测试自定义模板目录"""
+    import os
+
     loader = TemplateLoader()
 
     # 自定义模板目录应该存在
     assert loader.custom_template_dir.exists()
-    assert str(loader.custom_template_dir) == "config/template"
+    # 使用 os.path.normpath 来规范化路径，适配不同操作系统
+    assert os.path.normpath(str(loader.custom_template_dir)) == os.path.normpath("config/template")
 
 
 def test_custom_template_priority():
@@ -135,8 +141,8 @@ def test_custom_template_priority():
 
 def test_template_loader_with_custom_dir():
     """测试指定自定义模板目录"""
-    import tempfile
     import os
+    import tempfile
 
     # 创建临时目录
     with tempfile.TemporaryDirectory() as tmpdir:

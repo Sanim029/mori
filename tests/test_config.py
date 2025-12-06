@@ -45,14 +45,13 @@ def test_model_config_env_var():
 def test_agent_config():
     """测试Agent配置"""
     config = AgentConfig(
-        name="mori",
-        model="gpt-4",
-        template="internal_template/mori.jinja2",
+        model="main_gpt4",
+        template="mori",
         parallel_tool_calls=True,
     )
 
-    assert config.name == "mori"
-    assert config.model == "gpt-4"
+    assert config.model == "main_gpt4"
+    assert config.template == "mori"
     assert config.parallel_tool_calls is True
 
 
@@ -84,27 +83,33 @@ def test_server_config():
 def test_config():
     """测试完整配置"""
     config = Config(
-        models=[ModelConfig(model_name="gpt-4", model_type="openai", api_key="test-key")],
-        agents=[AgentConfig(name="mori", model="gpt-4", template="internal_template/mori.jinja2")],
+        models={
+            "main_gpt4": ModelConfig(model_name="gpt-4", model_type="openai", api_key="test-key")
+        },
+        agents={"mori": AgentConfig(model="main_gpt4", template="mori")},
+        primary_agent="mori",
     )
 
     assert len(config.models) == 1
     assert len(config.agents) == 1
-    assert config.models[0].model_name == "gpt-4"
-    assert config.agents[0].name == "mori"
+    assert config.models["main_gpt4"].model_name == "gpt-4"
+    assert config.agents["mori"].model == "main_gpt4"
 
 
 def test_get_model_config():
     """测试获取模型配置"""
     config = Config(
-        models=[
-            ModelConfig(model_name="gpt-4", model_type="openai", api_key="test-key"),
-            ModelConfig(model_name="gpt-3.5-turbo", model_type="openai", api_key="test-key"),
-        ],
-        agents=[AgentConfig(name="mori", model="gpt-4", template="internal_template/mori.jinja2")],
+        models={
+            "main_gpt4": ModelConfig(model_name="gpt-4", model_type="openai", api_key="test-key"),
+            "fast_gpt35": ModelConfig(
+                model_name="gpt-3.5-turbo", model_type="openai", api_key="test-key"
+            ),
+        },
+        agents={"mori": AgentConfig(model="main_gpt4", template="mori")},
+        primary_agent="mori",
     )
 
-    model = get_model_config(config, "gpt-4")
+    model = get_model_config(config, "main_gpt4")
     assert model is not None
     assert model.model_name == "gpt-4"
 
@@ -115,20 +120,19 @@ def test_get_model_config():
 def test_get_agent_config():
     """测试获取Agent配置"""
     config = Config(
-        models=[ModelConfig(model_name="gpt-4", model_type="openai", api_key="test-key")],
-        agents=[
-            AgentConfig(name="mori", model="gpt-4", template="internal_template/mori.jinja2"),
-            AgentConfig(
-                name="assistant",
-                model="gpt-4",
-                template="internal_template/assistant.jinja2",
-            ),
-        ],
+        models={
+            "main_gpt4": ModelConfig(model_name="gpt-4", model_type="openai", api_key="test-key")
+        },
+        agents={
+            "mori": AgentConfig(model="main_gpt4", template="mori"),
+            "assistant": AgentConfig(model="main_gpt4", template="assistant"),
+        },
+        primary_agent="mori",
     )
 
     agent = get_agent_config(config, "mori")
     assert agent is not None
-    assert agent.name == "mori"
+    assert agent.model == "main_gpt4"
 
     agent = get_agent_config(config, "non-existent")
     assert agent is None
@@ -139,3 +143,32 @@ def test_config_validation_error():
     with pytest.raises(ValidationError):
         # 缺少必需字段
         ModelConfig(model_name="gpt-4")  # type: ignore
+
+
+def test_config_reference_validation():
+    """测试配置引用验证"""
+    from mori.exceptions import ConfigValidationError
+
+    # 测试 primary_agent 不存在
+    with pytest.raises(ConfigValidationError, match="主Agent .* 不存在"):
+        Config(
+            models={
+                "main_gpt4": ModelConfig(
+                    model_name="gpt-4", model_type="openai", api_key="test-key"
+                )
+            },
+            agents={"mori": AgentConfig(model="main_gpt4", template="mori")},
+            primary_agent="non_existent",
+        )
+
+    # 测试 agent 引用的 model 不存在
+    with pytest.raises(ConfigValidationError, match="引用了不存在的模型"):
+        Config(
+            models={
+                "main_gpt4": ModelConfig(
+                    model_name="gpt-4", model_type="openai", api_key="test-key"
+                )
+            },
+            agents={"mori": AgentConfig(model="non_existent_model", template="mori")},
+            primary_agent="mori",
+        )

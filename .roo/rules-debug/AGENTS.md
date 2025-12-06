@@ -8,8 +8,10 @@
 - 嵌入模型的 `dimensions` 属性是 Mem0 推断向量维度的来源
 
 ### 模型配置问题
-- OpenAI 兼容接口的 `base_url` 必须在 `client_args` 中传递
-- 嵌入模型的 `base_url` 传递方式因模型类型而异（OpenAI 直接传参，Ollama 通过 `client_args`）
+- OpenAI 兼容接口的 `base_url` 必须在 `client_args` 中传递（聊天模型）
+- 嵌入模型的 `base_url` 传递方式：
+  - OpenAI 嵌入模型：直接传递 `base_url` 参数（因为内部直接传给 `openai.AsyncClient`）
+  - Ollama 嵌入模型：通过 `client_args` 传递 `base_url`
 
 ### 响应处理
 - Agent 响应格式不统一，可能是字符串或 `TextBlock` 列表

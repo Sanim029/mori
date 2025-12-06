@@ -3,12 +3,39 @@
 使用Pydantic进行配置验证，支持从YAML文件加载配置。
 """
 
+import logging
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import yaml
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
+
+from mori.exceptions import (
+    ConfigError,
+    ConfigFileNotFoundError,
+    ConfigParseError,
+    ConfigValidationError,
+)
+
+logger = logging.getLogger(__name__)
+
+
+def resolve_env_variable(value: Optional[str]) -> Optional[str]:
+    """解析环境变量引用
+
+    支持 ${ENV_VAR_NAME} 格式的环境变量引用
+
+    Args:
+        value: 可能包含环境变量引用的字符串
+
+    Returns:
+        解析后的值，如果是环境变量则返回其值，否则返回原值
+    """
+    if value and value.startswith("${") and value.endswith("}"):
+        env_var = value[2:-1]
+        return os.getenv(env_var)
+    return value
 
 
 class ModelConfig(BaseModel):
@@ -24,12 +51,9 @@ class ModelConfig(BaseModel):
 
     @field_validator("api_key", mode="before")
     @classmethod
-    def resolve_env_var(cls, v: Optional[str]) -> Optional[str]:
-        """解析环境变量"""
-        if v and v.startswith("${") and v.endswith("}"):
-            env_var = v[2:-1]
-            return os.getenv(env_var)
-        return v
+    def resolve_api_key_env(cls, v: Optional[str]) -> Optional[str]:
+        """解析API密钥中的环境变量引用"""
+        return resolve_env_variable(v)
 
 
 class EmbeddingModelConfig(BaseModel):
@@ -44,26 +68,43 @@ class EmbeddingModelConfig(BaseModel):
 
     @field_validator("api_key", mode="before")
     @classmethod
-    def resolve_env_var(cls, v: Optional[str]) -> Optional[str]:
-        """解析环境变量"""
-        if v and v.startswith("${") and v.endswith("}"):
-            env_var = v[2:-1]
-            return os.getenv(env_var)
+    def resolve_api_key_env(cls, v: Optional[str]) -> Optional[str]:
+        """解析API密钥中的环境变量引用"""
+        return resolve_env_variable(v)
+
+
+class LongTermMemoryConfig(BaseModel):
+    """长期记忆配置"""
+
+    enabled: bool = Field(..., description="是否启用长期记忆")
+    user_name: str = Field(..., description="用户名，用于隔离不同用户的记忆数据")
+    embedding_model: str = Field(..., description="引用models.yaml中的嵌入模型配置名")
+    mode: str = Field("agent_control", description="记忆模式: agent_control, static_control, both")
+    storage_path: str = Field("data/memory", description="存储路径")
+    on_disk: bool = Field(True, description="是否持久化存储到磁盘")
+
+    @field_validator("mode")
+    @classmethod
+    def validate_mode(cls, v: str) -> str:
+        """验证记忆模式是否为有效值"""
+        valid_modes = {"agent_control", "static_control", "both"}
+        if v not in valid_modes:
+            raise ValueError(f"无效的记忆模式 '{v}'，必须是 {valid_modes} 之一")
         return v
 
 
 class AgentConfig(BaseModel):
     """Agent配置"""
 
-    name: str = Field(..., description="Agent名称")
-    model: str = Field(..., description="使用的模型名称，引用models.yaml中的模型")
+    model: str = Field(..., description="引用models.yaml中的模型配置名")
     template: str = Field(..., description="提示词模板文件路径")
     sys_prompt: Optional[str] = Field(None, description="系统提示词，如果为None则使用模板")
     memory_config: Optional[Dict[str, Any]] = Field(default_factory=dict, description="记忆配置")
     parallel_tool_calls: bool = Field(False, description="是否支持并行工具调用")
-    long_term_memory: Optional[Dict[str, Any]] = Field(
+    tools: List[str] = Field(default_factory=list, description="可用的普通工具列表")
+    long_term_memory: Optional[LongTermMemoryConfig] = Field(
         None,
-        description="长期记忆配置，包含enabled, mode, user_name, embedding_model, storage_path等",
+        description="长期记忆配置",
     )
 
 
@@ -85,16 +126,98 @@ class ServerConfig(BaseModel):
 class Config(BaseModel):
     """完整配置"""
 
-    models: List[ModelConfig] = Field(..., description="模型配置列表")
-    agents: List[AgentConfig] = Field(..., description="Agent配置列表")
+    models: Dict[str, ModelConfig] = Field(..., description="模型配置字典，key为配置名")
+    agents: Dict[str, AgentConfig] = Field(..., description="Agent配置字典，key为agent名称")
+    primary_agent: str = Field(..., description="主agent名称")
     global_config: GlobalConfig = Field(default_factory=GlobalConfig, description="全局配置")
     server: ServerConfig = Field(default_factory=ServerConfig, description="服务器配置")
-    embedding_models: List[EmbeddingModelConfig] = Field(
-        default_factory=list, description="嵌入模型配置列表"
+    embedding_models: Dict[str, EmbeddingModelConfig] = Field(
+        default_factory=dict, description="嵌入模型配置字典，key为配置名"
     )
 
+    @model_validator(mode="after")
+    def validate_references(self) -> "Config":
+        """验证配置引用的完整性
 
-def load_yaml(file_path: str) -> Dict[str, Any]:
+        Raises:
+            ConfigValidationError: 配置验证失败
+        """
+        errors = []
+
+        try:
+            self._validate_primary_agent()
+        except ValueError as e:
+            errors.append(str(e))
+
+        try:
+            self._validate_agent_references()
+        except ValueError as e:
+            errors.append(str(e))
+
+        if errors:
+            raise ConfigValidationError("配置验证失败", errors)
+
+        return self
+
+    def _validate_primary_agent(self) -> None:
+        """验证主Agent是否存在
+
+        Raises:
+            ValueError: 主Agent不存在
+        """
+        if self.primary_agent not in self.agents:
+            available = ", ".join(self.agents.keys())
+            raise ValueError(f"主Agent '{self.primary_agent}' 不存在。可用: {available}")
+
+    def _validate_agent_references(self) -> None:
+        """验证所有Agent的配置引用
+
+        Raises:
+            ValueError: Agent配置引用错误
+        """
+        for agent_name, agent_cfg in self.agents.items():
+            self._validate_model_reference(agent_name, agent_cfg.model)
+            self._validate_embedding_model_reference(agent_name, agent_cfg)
+
+    def _validate_model_reference(self, agent_name: str, model_name: str) -> None:
+        """验证Agent引用的模型是否存在
+
+        Args:
+            agent_name: Agent名称
+            model_name: 模型名称
+
+        Raises:
+            ValueError: 模型不存在
+        """
+        if model_name not in self.models:
+            available = ", ".join(self.models.keys())
+            raise ValueError(
+                f"Agent '{agent_name}' 引用了不存在的模型 '{model_name}'。可用: {available}"
+            )
+
+    def _validate_embedding_model_reference(self, agent_name: str, agent_cfg: AgentConfig) -> None:
+        """验证Agent长期记忆引用的嵌入模型是否存在
+
+        Args:
+            agent_name: Agent名称
+            agent_cfg: Agent配置
+
+        Raises:
+            ValueError: 嵌入模型不存在
+        """
+        if not (agent_cfg.long_term_memory and agent_cfg.long_term_memory.enabled):
+            return
+
+        embedding_model = agent_cfg.long_term_memory.embedding_model
+        if embedding_model not in self.embedding_models:
+            available = ", ".join(self.embedding_models.keys())
+            raise ValueError(
+                f"Agent '{agent_name}' 引用了不存在的嵌入模型 '{embedding_model}'。"
+                f"可用: {available}"
+            )
+
+
+def load_yaml(file_path: str | Path) -> Dict[str, Any]:
     """加载YAML文件
 
     Args:
@@ -104,15 +227,48 @@ def load_yaml(file_path: str) -> Dict[str, Any]:
         解析后的字典
 
     Raises:
-        FileNotFoundError: 文件不存在
-        yaml.YAMLError: YAML解析错误
+        ConfigFileNotFoundError: 文件不存在
+        ConfigParseError: YAML解析错误
+        ConfigError: 其他配置相关错误
     """
     path = Path(file_path)
-    if not path.exists():
-        raise FileNotFoundError(f"配置文件不存在: {file_path}")
 
-    with open(path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+    # 检查文件是否存在
+    if not path.exists():
+        logger.error(f"配置文件不存在: {file_path}")
+        raise ConfigFileNotFoundError(str(file_path))
+
+    try:
+        logger.debug(f"正在加载配置文件: {file_path}")
+        with open(path, "r", encoding="utf-8") as f:
+            result = yaml.safe_load(f)
+
+            # 检查 yaml.safe_load 返回 None 的情况（空文件或只有注释）
+            if result is None:
+                logger.error(f"YAML文件为空或无有效内容: {file_path}")
+                raise ConfigParseError(str(file_path), ValueError("YAML文件为空或无有效内容"))
+
+            # 确保返回字典类型
+            if not isinstance(result, dict):
+                logger.error(
+                    f"YAML文件内容必须是字典类型，实际为 {type(result).__name__}: {file_path}"
+                )
+                raise ConfigParseError(
+                    str(file_path),
+                    ValueError(f"YAML文件内容必须是字典类型，实际为 {type(result).__name__}"),
+                )
+
+            logger.debug(f"成功加载配置文件: {file_path}")
+            return result
+
+    except yaml.YAMLError as e:
+        logger.error(f"YAML解析错误 ({file_path}): {e}")
+        raise ConfigParseError(str(file_path), e)
+    except (ConfigFileNotFoundError, ConfigParseError):
+        raise
+    except Exception as e:
+        logger.error(f"加载YAML文件时发生未知错误 ({file_path}): {e}")
+        raise ConfigError(f"加载配置文件失败: {file_path}", str(e))
 
 
 def load_config(config_dir: str = "config") -> Config:
@@ -125,48 +281,69 @@ def load_config(config_dir: str = "config") -> Config:
         验证后的配置对象
 
     Raises:
-        FileNotFoundError: 配置文件不存在
-        ValidationError: 配置验证失败
+        ConfigFileNotFoundError: 必需的配置文件不存在
+        ConfigParseError: 配置文件解析失败
+        ConfigValidationError: 配置验证失败
+        ConfigError: 其他配置相关错误
     """
     config_path = Path(config_dir)
+    logger.info(f"开始加载配置，配置目录: {config_dir}")
 
-    # 加载各个配置文件
-    models_data = load_yaml(config_path / "models.yaml")
-    agents_data = load_yaml(config_path / "agents.yaml")
-
-    # 尝试加载全局配置，如果不存在则使用默认值
     try:
-        global_data = load_yaml(config_path / "config.yaml")
-    except FileNotFoundError:
-        global_data = {}
+        # 加载必需的配置文件
+        logger.debug("加载模型配置文件 (models.yaml)")
+        models_data = load_yaml(config_path / "models.yaml")
 
-    # 合并配置
-    config_data = {
-        "models": models_data.get("models", []),
-        "agents": agents_data.get("agents", []),
-        "global_config": global_data.get("global", {}),
-        "server": global_data.get("server", {}),
-        "embedding_models": models_data.get("embedding_models", []),
-    }
+        logger.debug("加载 Agent 配置文件 (agents.yaml)")
+        agents_data = load_yaml(config_path / "agents.yaml")
 
-    # 验证并返回配置
-    return Config(**config_data)
+        # 尝试加载全局配置，如果不存在则使用默认值
+        try:
+            logger.debug("加载全局配置文件 (config.yaml)")
+            global_data = load_yaml(config_path / "config.yaml")
+        except ConfigFileNotFoundError:
+            logger.info("未找到全局配置文件 (config.yaml)，使用默认值")
+            global_data = {}
+
+        # 合并配置
+        config_data = {
+            "models": models_data.get("models", {}),
+            "agents": agents_data.get("agents", {}),
+            "primary_agent": agents_data.get("primary_agent"),
+            "global_config": global_data.get("global", {}),
+            "server": global_data.get("server", {}),
+            "embedding_models": models_data.get("embedding_models", {}),
+        }
+
+        # 验证并返回配置
+        logger.debug("验证配置...")
+        config = Config(**config_data)
+        logger.info("配置加载和验证成功")
+        return config
+
+    except ValidationError as e:
+        logger.error(f"配置验证失败: {e}")
+        # 提取 Pydantic 验证错误信息
+        errors = [f"{err['loc']}: {err['msg']}" for err in e.errors()]
+        raise ConfigValidationError("配置验证失败", errors)
+    except (ConfigFileNotFoundError, ConfigParseError, ConfigValidationError):
+        raise
+    except Exception as e:
+        logger.error(f"加载配置时发生未知错误: {e}")
+        raise ConfigError("加载配置失败", str(e))
 
 
-def get_model_config(config: Config, model_name: str) -> Optional[ModelConfig]:
-    """根据名称获取模型配置
+def get_model_config(config: Config, config_name: str) -> Optional[ModelConfig]:
+    """根据配置名获取模型配置
 
     Args:
         config: 配置对象
-        model_name: 模型名称
+        config_name: 模型配置名
 
     Returns:
         模型配置，如果不存在则返回None
     """
-    for model in config.models:
-        if model.model_name == model_name:
-            return model
-    return None
+    return config.models.get(config_name)
 
 
 def get_agent_config(config: Config, agent_name: str) -> Optional[AgentConfig]:
@@ -179,23 +356,17 @@ def get_agent_config(config: Config, agent_name: str) -> Optional[AgentConfig]:
     Returns:
         Agent配置，如果不存在则返回None
     """
-    for agent in config.agents:
-        if agent.name == agent_name:
-            return agent
-    return None
+    return config.agents.get(agent_name)
 
 
-def get_embedding_model_config(config: Config, model_name: str) -> Optional[EmbeddingModelConfig]:
-    """根据名称获取嵌入模型配置
+def get_embedding_model_config(config: Config, config_name: str) -> Optional[EmbeddingModelConfig]:
+    """根据配置名获取嵌入模型配置
 
     Args:
         config: 配置对象
-        model_name: 嵌入模型名称
+        config_name: 嵌入模型配置名
 
     Returns:
         嵌入模型配置，如果不存在则返回None
     """
-    for model in config.embedding_models:
-        if model.model_name == model_name:
-            return model
-    return None
+    return config.embedding_models.get(config_name)

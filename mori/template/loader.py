@@ -4,10 +4,23 @@
 支持内置模板和自定义模板。
 """
 
+import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from jinja2 import ChoiceLoader, Environment, FileSystemLoader, Template, select_autoescape
+from jinja2 import (
+    ChoiceLoader,
+    Environment,
+    FileSystemLoader,
+    Template,
+    TemplateNotFound,
+    TemplateSyntaxError,
+    select_autoescape,
+)
+
+from mori.exceptions import TemplateError, TemplateNotFoundError, TemplateRenderError
+
+logger = logging.getLogger(__name__)
 
 
 class TemplateLoader:
@@ -101,10 +114,28 @@ class TemplateLoader:
             Jinja2模板对象
 
         Raises:
-            TemplateNotFound: 模板文件不存在
+            TemplateNotFoundError: 模板文件不存在
+            TemplateError: 其他模板相关错误
         """
-        resolved_path = self._resolve_template_path(template_name)
-        return self.env.get_template(resolved_path)
+        try:
+            resolved_path = self._resolve_template_path(template_name)
+            logger.debug(f"加载模板: {resolved_path}")
+            template = self.env.get_template(resolved_path)
+            logger.debug(f"模板加载成功: {resolved_path}")
+            return template
+        except TemplateNotFound:
+            logger.error(f"模板不存在: {template_name}")
+            search_paths = [
+                str(self.custom_template_dir),
+                str(self.internal_template_dir),
+            ]
+            raise TemplateNotFoundError(template_name, search_paths)
+        except TemplateSyntaxError as e:
+            logger.error(f"模板语法错误 ({template_name}): {e}")
+            raise TemplateError(f"模板语法错误: {template_name}", str(e))
+        except Exception as e:
+            logger.error(f"加载模板失败 ({template_name}): {e}")
+            raise TemplateError(f"加载模板失败: {template_name}", str(e))
 
     def render_template(self, template_name: str, context: Optional[Dict[str, Any]] = None) -> str:
         """加载并渲染模板
@@ -119,13 +150,24 @@ class TemplateLoader:
             渲染后的字符串
 
         Raises:
-            TemplateNotFound: 模板文件不存在
+            TemplateNotFoundError: 模板文件不存在
+            TemplateRenderError: 模板渲染失败
+            TemplateError: 其他模板相关错误
         """
         if context is None:
             context = {}
 
-        template = self.load_template(template_name)
-        return template.render(**context)
+        try:
+            template = self.load_template(template_name)
+            logger.debug(f"渲染模板: {template_name}")
+            result: str = template.render(**context)
+            logger.debug(f"模板渲染成功: {template_name}")
+            return result
+        except (TemplateNotFoundError, TemplateError):
+            raise
+        except Exception as e:
+            logger.error(f"渲染模板失败 ({template_name}): {e}")
+            raise TemplateRenderError(template_name, e)
 
     def render_string(self, template_string: str, context: Optional[Dict[str, Any]] = None) -> str:
         """渲染模板字符串
@@ -136,12 +178,25 @@ class TemplateLoader:
 
         Returns:
             渲染后的字符串
+
+        Raises:
+            TemplateError: 模板渲染失败
         """
         if context is None:
             context = {}
 
-        template = self.env.from_string(template_string)
-        return template.render(**context)
+        try:
+            logger.debug("渲染模板字符串")
+            template = self.env.from_string(template_string)
+            result: str = template.render(**context)
+            logger.debug("模板字符串渲染成功")
+            return result
+        except TemplateSyntaxError as e:
+            logger.error(f"模板字符串语法错误: {e}")
+            raise TemplateError("模板字符串语法错误", str(e))
+        except Exception as e:
+            logger.error(f"渲染模板字符串失败: {e}")
+            raise TemplateError("渲染模板字符串失败", str(e))
 
 
 def load_template_file(template_path: str, context: Optional[Dict[str, Any]] = None) -> str:
