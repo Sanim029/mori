@@ -3,10 +3,12 @@
 使用Pydantic进行配置验证，支持从YAML文件加载配置。
 """
 
+from __future__ import annotations
+
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import yaml
 from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
@@ -217,7 +219,7 @@ class Config(BaseModel):
             )
 
 
-def load_yaml(file_path: str | Path) -> Dict[str, Any]:
+def load_yaml(file_path: Union[str, Path]) -> Dict[str, Any]:
     """加载YAML文件
 
     Args:

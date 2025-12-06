@@ -6,9 +6,11 @@
 使用注册表模式，支持动态添加新模型类型，符合开闭原则。
 """
 
+from __future__ import annotations
+
 import logging
 from logging import Logger
-from typing import Any, Dict, Optional, Tuple, Type
+from typing import Any, Dict, List, Optional, Tuple, Type
 
 from agentscope.embedding import (
     DashScopeTextEmbedding,
@@ -84,7 +86,7 @@ class ModelRegistry:
             )
         return self._registry[model_type]
 
-    def list_types(self) -> list[str]:
+    def list_types(self) -> List[str]:
         """列出所有已注册的模型类型"""
         return list(self._registry.keys())
 
@@ -135,7 +137,7 @@ class EmbeddingModelRegistry:
             )
         return self._registry[model_type]
 
-    def list_types(self) -> list[str]:
+    def list_types(self) -> List[str]:
         """列出所有已注册的嵌入模型类型"""
         return list(self._registry.keys())
 

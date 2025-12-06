@@ -3,6 +3,8 @@
 提供项目特定的异常类，便于区分和处理不同类型的错误。
 """
 
+from typing import List, Optional
+
 
 class MoriError(Exception):
     """Mori 项目的基础异常类
@@ -10,7 +12,7 @@ class MoriError(Exception):
     所有自定义异常都应该继承此类。
     """
 
-    def __init__(self, message: str, details: str | None = None):
+    def __init__(self, message: str, details: Optional[str] = None):
         """初始化异常
 
         Args:
@@ -57,7 +59,7 @@ class ConfigParseError(ConfigError):
 class ConfigValidationError(ConfigError):
     """配置验证错误"""
 
-    def __init__(self, message: str, validation_errors: list | None = None):
+    def __init__(self, message: str, validation_errors: Optional[List[str]] = None):
         details = None
         if validation_errors:
             details = "\n".join(f"  - {err}" for err in validation_errors)
@@ -85,7 +87,7 @@ class ModelConfigError(ModelError):
 class ModelNotFoundError(ModelError):
     """模型不存在"""
 
-    def __init__(self, model_name: str, available_models: list[str] | None = None):
+    def __init__(self, model_name: str, available_models: Optional[List[str]] = None):
         details = None
         if available_models:
             details = f"可用模型: {', '.join(available_models)}"
@@ -114,7 +116,7 @@ class AgentConfigError(AgentError):
 class AgentNotFoundError(AgentError):
     """Agent 不存在"""
 
-    def __init__(self, agent_name: str, available_agents: list[str] | None = None):
+    def __init__(self, agent_name: str, available_agents: Optional[List[str]] = None):
         details = None
         if available_agents:
             details = f"可用 Agent: {', '.join(available_agents)}"
@@ -169,7 +171,7 @@ class TemplateError(MoriError):
 class TemplateNotFoundError(TemplateError):
     """模板不存在"""
 
-    def __init__(self, template_name: str, search_paths: list[str] | None = None):
+    def __init__(self, template_name: str, search_paths: Optional[List[str]] = None):
         details = None
         if search_paths:
             details = f"搜索路径: {', '.join(search_paths)}"
