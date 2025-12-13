@@ -245,7 +245,7 @@ def create_chat_model(model_config: ModelConfig) -> Tuple[ChatModelBase, Any]:
 
         if model_config.api_key:
             model_kwargs["api_key"] = model_config.api_key
-            logger.debug(f"设置 API 密钥 (长度: {len(model_config.api_key)})")
+            logger.debug("API 密钥已设置")
 
         if model_config.generate_kwargs:
             model_kwargs["generate_kwargs"] = model_config.generate_kwargs
@@ -308,7 +308,7 @@ def create_embedding_model(
 
         if embedding_config.api_key:
             model_kwargs["api_key"] = embedding_config.api_key
-            log.debug(f"设置 API 密钥 (长度: {len(embedding_config.api_key)})")
+            log.debug("API 密钥已设置")
 
         # 关键：显式设置 dimensions（Mem0 需要）
         if embedding_config.dimensions:
@@ -335,7 +335,6 @@ def create_embedding_model(
 
         # 实例化 AgentScope 提供的嵌入模型类
         log.debug(f"实例化嵌入模型类: {embedding_model_class.__name__}")
-        log.debug(f"嵌入模型创建参数: {model_kwargs}")
 
         embedding_model = embedding_model_class(**model_kwargs)
 
